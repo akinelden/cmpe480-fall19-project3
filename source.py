@@ -20,6 +20,7 @@ class Node:
         self.dominant_class = grouped.idxmax()
         self.leftChild = None
         self.rightChild = None
+        self.hasChild = False
         self.level = -1
 
     def __lt__(self, other):
@@ -34,6 +35,7 @@ class Node:
         self.splitValue = value
         self.leftChild = Node(impurities[0], self.data[self.data[feature]<=value])
         self.rightChild = Node(impurities[1], self.data[self.data[feature]>value])
+        self.hasChild = True
         del self.data # for memory efficiency
         return self.leftChild, self.rightChild
 
@@ -50,8 +52,26 @@ def informationGain(parentImpurity, childrenData):
         d = childrenData[i]
         childEntropies.append(entropy(d))
         childSizes.append(len(d))
-    avgEntropy = np.sum( np.array(childEntropies) * np.array(childSizes) / np.sum(childSizes) )
-    return parentImpurity - avgEntropy, childEntropies
+    N = np.sum(childSizes)
+    remainder = np.sum( np.array(childEntropies) * np.array(childSizes) / N )
+    return parentImpurity - remainder, childEntropies
+
+# %%
+def giniIndex(data):
+    n = len(data)
+    probs = data.groupby(["target_class"]).count().iloc[:,0] / n
+    return 1 - np.sum(np.square(probs))
+
+def giniGain(parentImpurity, childrenData):
+    childGinis = []
+    childSizes = []
+    for i in range(len(childrenData)):
+        d = childrenData[i]
+        childGinis.append(giniIndex(d))
+        childSizes.append(len(d))
+    N = np.sum(childSizes)
+    remainder = np.sum( np.array(childGinis) * np.array(childSizes) / N )
+    return parentImpurity - remainder, childGinis
 
 # %%
 def findBestSplit(data, parentImp, perfMeasure):
@@ -81,8 +101,8 @@ def decisionTree(train, validation, performanceMeasure="infGain"):
         impurityMeasure = entropy
         perfMeasure = informationGain
     elif performanceMeasure == "gini":
-        # TODO
-        impurityMeasure = None
+        impurityMeasure = giniIndex
+        perfMeasure = giniGain
     else:
         print("Invalid impurity measurement")
         return
