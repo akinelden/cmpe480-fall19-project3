@@ -32,8 +32,6 @@ class Node:
     def split(self, feature, value, impurities):
         self.splitFeature = feature
         self.splitValue = value
-        print(feature)
-        print(value)
         self.leftChild = Node(impurities[0], self.data[self.data[feature]<=value])
         self.rightChild = Node(impurities[1], self.data[self.data[feature]>value])
         del self.data # for memory efficiency
