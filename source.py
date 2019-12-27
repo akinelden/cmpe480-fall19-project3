@@ -94,20 +94,20 @@ def findBestSplit(data, parentImp, perfMeasure):
     return bestFeature, bestValue, bestPerf, bestChildImps
 
 
-def decisionTree(train, validation, performanceMeasure="infGain"):
-    impurityMeasure = None
+def decisionTree(train, validation, impurityMeasure="entropy"):
+    impMeasure = None
     perfMeasure = None
-    if performanceMeasure == "infGain":
-        impurityMeasure = entropy
+    if impurityMeasure == "entropy":
+        impMeasure = entropy
         perfMeasure = informationGain
-    elif performanceMeasure == "gini":
-        impurityMeasure = giniIndex
+    elif impurityMeasure == "gini":
+        impMeasure = giniIndex
         perfMeasure = giniGain
     else:
         print("Invalid impurity measurement")
         return
     nodeQueue = []
-    root = Node(impurityMeasure(train), train)
+    root = Node(impMeasure(train), train)
     heappush(nodeQueue, root)
     level = 0
     while(len(nodeQueue) > 0):
