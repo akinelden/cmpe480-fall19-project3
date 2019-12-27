@@ -20,17 +20,24 @@ class Node:
         self.dominant_class = grouped.idxmax()
         self.leftChild = None
         self.rightChild = None
-        self.order = -1
+        self.level = -1
 
-    def assignOrder(self, order):
-        self.order = order
+    def __lt__(self, other):
+        # The node with higher impurity is prioritized in queue
+        return self.impurity > other.impurity
+
+    def assignLevel(self, level):
+        self.level = level
 
     def split(self, feature, value, impurities):
         self.splitFeature = feature
         self.splitValue = value
-        self.leftChild = Node(impurities[0], data[data[feature]<=value])
-        self.rightChild = Node(impurities[1], data[data[feature]>value])
+        print(feature)
+        print(value)
+        self.leftChild = Node(impurities[0], self.data[self.data[feature]<=value])
+        self.rightChild = Node(impurities[1], self.data[self.data[feature]>value])
         del self.data # for memory efficiency
+        return self.leftChild, self.rightChild
 
 # %%
 def entropy(data):
@@ -83,13 +90,23 @@ def decisionTree(train, validation, performanceMeasure="infGain"):
         return
     nodeQueue = []
     root = Node(impurityMeasure(train), train)
-    heappush(nodeQueue, (root.impurity, root))
-    order = 0
-    while(True):
-        currentNode = heappop(nodeQueue)[1]
-        currentNode.assignOrder(order)
-        currentData = currentNode.data
-        feature, value, perf, childImps = findBestSplit(currentData, currentNode.impurity, perfMeasure)
+    heappush(nodeQueue, root)
+    level = 0
+    while(len(nodeQueue) > 0):
+        currentNode = heappop(nodeQueue)
+        if currentNode.impurity == 0:
+            break # all nodes are pure
+        currentNode.assignLevel(level)
+        feature, value, perf, childImps = findBestSplit(currentNode.data, currentNode.impurity, perfMeasure)
+        if perf == 0:
+            continue # no performance improvement, don't split the node
+        leftChild, rightChild = currentNode.split(feature, value, childImps)
+        heappush(nodeQueue, leftChild)
+        heappush(nodeQueue, rightChild)
+        level += 1
+    return root
 
+# %%
+decisionTree(iris, [])
 
 # %%
