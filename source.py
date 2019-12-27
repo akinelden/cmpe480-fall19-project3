@@ -15,13 +15,13 @@ class Node:
     def __init__(self, impurity, data):
         self.impurity = impurity
         self.data = data
-        grouped = data.groupby(["class"])
+        grouped = data.groupby(["class"]).count().iloc[:,0]
         self.decision = grouped.idxmax()
         self.leftChild = None
         self.rightChild = None
 
-    def assignLevel(self, level):
-        self.level = level
+    def assignLevel(self, order):
+        self.order = order
 
     def split(self, feature, value, impurities):
         self.splitFeature = feature
@@ -45,3 +45,5 @@ def informationGain(parentEntropy, childrenData):
         childSizes.append(len(d))
     avgEntropy = np.sum( np.array(childEntropies) * np.array(childSizes) / np.sum(childSizes) )
     return parentEntropy - avgEntropy
+
+# %%
