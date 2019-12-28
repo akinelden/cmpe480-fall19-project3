@@ -1,6 +1,7 @@
 #%%
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from heapq import heappush, heappop
 from sklearn import datasets
 iris_data = datasets.load_iris()
@@ -55,6 +56,8 @@ def informationGain(parentImpurity, childrenData):
         childEntropies.append(entropy(d))
         childSizes.append(len(d))
     N = np.sum(childSizes)
+    if N == 0: # no data given, no improvement
+        return 0, childEntropies
     remainder = np.sum( np.array(childEntropies) * np.array(childSizes) / N )
     return parentImpurity - remainder, childEntropies
 
@@ -72,6 +75,8 @@ def giniGain(parentImpurity, childrenData):
         childGinis.append(giniIndex(d))
         childSizes.append(len(d))
     N = np.sum(childSizes)
+    if N == 0: # no data given, no improvement
+        return 0, childGinis
     remainder = np.sum( np.array(childGinis) * np.array(childSizes) / N )
     return parentImpurity - remainder, childGinis
 
@@ -111,6 +116,10 @@ def decisionTree(train, validation, impurityMeasure="entropy"):
     nodeQueue = []
     root = Node(impMeasure(train), train, impMeasure(validation), validation)
     heappush(nodeQueue, root)
+    totalTrainImp = [impMeasure(train)]
+    totalValidImp = [impMeasure(validation)]
+    totalTrainRow = len(train)
+    totalValidRow = len(validation)
     level = 0
     while(len(nodeQueue) > 0):
         currentNode = heappop(nodeQueue)
@@ -126,20 +135,48 @@ def decisionTree(train, validation, impurityMeasure="entropy"):
         rightValidation = currentNode.validationData[currentNode.validationData[feature] > value]
         validationPerf, childValImps = perfMeasure(currentNode.validationImp, [leftValidation, rightValidation])
         print("Training perf improvement: {0}, validation perf improvement: {1}".format(perf, validationPerf))
+        totalTrainImp.append(np.round( totalTrainImp[level] - perf * len(currentNode.trainData) / totalTrainRow , 5))
+        totalValidImp.append( np.round( totalValidImp[level] - validationPerf * len(currentNode.validationData) / totalValidRow , 5)) 
+        print("Total training impurity: {0}, total valid impurity: {1}".format(totalTrainImp[level+1], totalValidImp[level+1]))
         if validationPerf < 0:
             print("Negative validation improvement")
-            continue # no validation performance improvement, don't split the node
+            # continue # no validation performance improvement, don't split the node
         leftChild, rightChild = currentNode.split(feature, value, childImps, childValImps)
         heappush(nodeQueue, leftChild)
         heappush(nodeQueue, rightChild)
         level += 1
-    return root
+    return root, totalTrainImp, totalValidImp
 
 # %%
-randomized = iris.sample(frac=1)
-train = randomized[:90]
-valid = randomized[90:]
+def plotImpurityGraph(trainResults, validationResults, impurityMeasure):
+    splits = np.arange(len(trainResults))
+    plt.figure()
+    plt.plot(splits, trainResults, 'k-', label='Training impurity')
+    plt.plot(splits, validationResults, 'b-', label='Validation impurity')
+    plt.xlabel("# of splits")
+    plt.xticks(splits, splits)
+    if impurityMeasure == "entropy":
+        plt.title("Loss with information gain")
+        plt.ylabel("Total entropy")
+    elif impurityMeasure == "gini":
+        plt.title("Loss with gini impurity")
+        plt.ylabel("Total gini")
+    plt.legend()
+    #plt.savefig("impurity.png")
 
-root = decisionTree(train, valid)
+def decisionLearning(data, impurityMeasure="entropy", seed=480):
+    np.random.seed(seed)
+    shuffled = data.sample(frac=1)
+    N = len(data)
+    tr = int(N * 0.2)
+    val = tr + int(N * 0.4)
+    training = shuffled[:tr]
+    validation = shuffled[tr:val]
+    test = shuffled[val:]
+    root, trainImps, validImps = decisionTree(training, validation, impurityMeasure)
+    plotImpurityGraph(trainImps, validImps, impurityMeasure)
+
+# %%
+decisionLearning(iris, seed=5)
 
 # %%
