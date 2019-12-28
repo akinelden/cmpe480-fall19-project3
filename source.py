@@ -13,11 +13,13 @@ iris["target_class"] = iris_data.target
 
 # %%
 class Node:
-    def __init__(self, impurity, data):
-        self.impurity = impurity
-        self.data = data
-        grouped = data.groupby(["target_class"]).count().iloc[:,0]
+    def __init__(self, trainImpurity, trainData, validationImpurity, validationData):
+        self.trainImp = trainImpurity
+        self.trainData = trainData
+        grouped = trainData.groupby(["target_class"]).count().iloc[:,0]
         self.dominant_class = grouped.idxmax()
+        self.validationImp = validationImpurity
+        self.validationData = validationData
         self.leftChild = None
         self.rightChild = None
         self.hasChild = False
@@ -25,18 +27,18 @@ class Node:
 
     def __lt__(self, other):
         # The node with higher impurity is prioritized in queue
-        return self.impurity > other.impurity
+        return self.trainImp > other.trainImp
 
     def assignLevel(self, level):
         self.level = level
 
-    def split(self, feature, value, impurities):
+    def split(self, feature, value, trainImpurities, validationImpurities):
         self.splitFeature = feature
         self.splitValue = value
-        self.leftChild = Node(impurities[0], self.data[self.data[feature]<=value])
-        self.rightChild = Node(impurities[1], self.data[self.data[feature]>value])
+        self.leftChild = Node(trainImpurities[0], self.trainData[self.trainData[feature]<=value], validationImpurities[0], self.validationData[self.validationData[feature]<=value])
+        self.rightChild = Node(trainImpurities[1], self.trainData[self.trainData[feature]>value], validationImpurities[1], self.validationData[self.validationData[feature]>value])
         self.hasChild = True
-        del self.data # for memory efficiency
+        del self.trainData, self.validationData # for memory efficiency
         return self.leftChild, self.rightChild
 
 # %%
@@ -107,24 +109,37 @@ def decisionTree(train, validation, impurityMeasure="entropy"):
         print("Invalid impurity measurement")
         return
     nodeQueue = []
-    root = Node(impMeasure(train), train)
+    root = Node(impMeasure(train), train, impMeasure(validation), validation)
     heappush(nodeQueue, root)
     level = 0
     while(len(nodeQueue) > 0):
         currentNode = heappop(nodeQueue)
-        if currentNode.impurity == 0:
+        if currentNode.trainImp == 0:
             break # all nodes are pure
         currentNode.assignLevel(level)
-        feature, value, perf, childImps = findBestSplit(currentNode.data, currentNode.impurity, perfMeasure)
-        if perf == 0:
-            continue # no performance improvement, don't split the node
-        leftChild, rightChild = currentNode.split(feature, value, childImps)
+        feature, value, perf, childImps = findBestSplit(currentNode.trainData, currentNode.trainImp, perfMeasure)
+        print("Current node level: {0}, feature: {1}, value: {2}".format(currentNode.level, feature, value))
+        if perf <= 0:
+            print("No training improvement")
+            continue # no training performance improvement, don't split the node
+        leftValidation = currentNode.validationData[currentNode.validationData[feature] <= value]
+        rightValidation = currentNode.validationData[currentNode.validationData[feature] > value]
+        validationPerf, childValImps = perfMeasure(currentNode.validationImp, [leftValidation, rightValidation])
+        print("Training perf improvement: {0}, validation perf improvement: {1}".format(perf, validationPerf))
+        if validationPerf < 0:
+            print("Negative validation improvement")
+            continue # no validation performance improvement, don't split the node
+        leftChild, rightChild = currentNode.split(feature, value, childImps, childValImps)
         heappush(nodeQueue, leftChild)
         heappush(nodeQueue, rightChild)
         level += 1
     return root
 
 # %%
-decisionTree(iris, [])
+randomized = iris.sample(frac=1)
+train = randomized[:90]
+valid = randomized[90:]
+
+root = decisionTree(train, valid)
 
 # %%
