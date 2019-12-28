@@ -164,12 +164,12 @@ def plotImpurityGraph(trainResults, validationResults, impurityMeasure):
     plt.legend()
     #plt.savefig("impurity.png")
 
-def decisionLearning(data, impurityMeasure="entropy", seed=480):
+def decisionLearning(data, impurityMeasure="entropy", tr_val_te_ratios=[0.2, 0.4, 0.4], seed=480):
     np.random.seed(seed)
     shuffled = data.sample(frac=1)
     N = len(data)
-    tr = int(N * 0.2)
-    val = tr + int(N * 0.4)
+    tr = int(N * tr_val_te_ratios[0])
+    val = tr + int(N * tr_val_te_ratios[1])
     training = shuffled[:tr]
     validation = shuffled[tr:val]
     test = shuffled[val:]
