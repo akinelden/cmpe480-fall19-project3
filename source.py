@@ -11,6 +11,8 @@ feature_reformat = lambda st : st.replace(' (cm)', '').replace(' ', '_')
 feature_names = list(map(feature_reformat, iris_data.feature_names))
 iris = pd.DataFrame(iris_data.data, columns=feature_names)
 iris["target_class"] = iris_data.target
+# %%
+# NOTE: "Imp" means impurity for all the fields declared in the code
 
 # %%
 class Node:
@@ -24,7 +26,9 @@ class Node:
         self.leftChild = None
         self.rightChild = None
         self.hasChild = False
-        self.level = -1
+        self.level = np.inf
+        self.testData = None
+        self.testImp = None
 
     def __lt__(self, other):
         # The node with higher impurity is prioritized in queue
@@ -99,20 +103,23 @@ def findBestSplit(data, parentImp, perfMeasure):
                 bestPerf = performance
                 bestChildImps = childImps
     return bestFeature, bestValue, bestPerf, bestChildImps
+# %%
 
-
-def decisionTree(train, validation, impurityMeasure="entropy"):
+def getImpurityMeasurementFunctions(impurityMeasureName):
     impMeasure = None
     perfMeasure = None
-    if impurityMeasure == "entropy":
+    if impurityMeasureName == "entropy":
         impMeasure = entropy
         perfMeasure = informationGain
-    elif impurityMeasure == "gini":
+    elif impurityMeasureName == "gini":
         impMeasure = giniIndex
         perfMeasure = giniGain
     else:
-        print("Invalid impurity measurement")
-        return
+        raise Exception("Invalid impurity measurement")
+    return impMeasure, perfMeasure
+# %%
+def treeGrowth(train, validation, impurityMeasure="entropy"):
+    impMeasure, perfMeasure = getImpurityMeasurementFunctions(impurityMeasure)
     nodeQueue = []
     root = Node(impMeasure(train), train, impMeasure(validation), validation)
     heappush(nodeQueue, root)
@@ -127,20 +134,17 @@ def decisionTree(train, validation, impurityMeasure="entropy"):
             break # all nodes are pure
         currentNode.assignLevel(level)
         feature, value, perf, childImps = findBestSplit(currentNode.trainData, currentNode.trainImp, perfMeasure)
-        print("Current node level: {0}, feature: {1}, value: {2}".format(currentNode.level, feature, value))
+        #print("Current node level: {0}, feature: {1}, value: {2}".format(currentNode.level, feature, value))
         if perf <= 0:
-            print("No training improvement")
+            #print("No training improvement")
             continue # no training performance improvement, don't split the node
         leftValidation = currentNode.validationData[currentNode.validationData[feature] <= value]
         rightValidation = currentNode.validationData[currentNode.validationData[feature] > value]
         validationPerf, childValImps = perfMeasure(currentNode.validationImp, [leftValidation, rightValidation])
-        print("Training perf improvement: {0}, validation perf improvement: {1}".format(perf, validationPerf))
+        #print("Training perf improvement: {0}, validation perf improvement: {1}".format(perf, validationPerf))
         totalTrainImp.append(np.round( totalTrainImp[level] - perf * len(currentNode.trainData) / totalTrainRow , 5))
         totalValidImp.append( np.round( totalValidImp[level] - validationPerf * len(currentNode.validationData) / totalValidRow , 5)) 
-        print("Total training impurity: {0}, total valid impurity: {1}".format(totalTrainImp[level+1], totalValidImp[level+1]))
-        if validationPerf < 0:
-            print("Negative validation improvement")
-            # continue # no validation performance improvement, don't split the node
+        #print("Total training impurity: {0}, total valid impurity: {1}".format(totalTrainImp[level+1], totalValidImp[level+1]))
         leftChild, rightChild = currentNode.split(feature, value, childImps, childValImps)
         heappush(nodeQueue, leftChild)
         heappush(nodeQueue, rightChild)
@@ -148,12 +152,13 @@ def decisionTree(train, validation, impurityMeasure="entropy"):
     return root, totalTrainImp, totalValidImp
 
 # %%
-def plotImpurityGraph(trainResults, validationResults, impurityMeasure):
+def plotImpurityGraph(trainResults, validationResults, testResults, impurityMeasure):
     splits = np.arange(len(trainResults))
     plt.figure()
-    plt.plot(splits, trainResults, 'k-', label='Training impurity')
-    plt.plot(splits, validationResults, 'b-', label='Validation impurity')
-    plt.xlabel("# of splits")
+    plt.plot(splits, trainResults, 'k-', label='Training error')
+    plt.plot(splits, validationResults, 'b-', label='Validation error')
+    plt.plot(splits, testResults, 'g-', label='Test error')
+    plt.xlabel("Number of splits")
     plt.xticks(splits, splits)
     if impurityMeasure == "entropy":
         plt.title("Loss with information gain")
@@ -162,7 +167,6 @@ def plotImpurityGraph(trainResults, validationResults, impurityMeasure):
         plt.title("Loss with gini impurity")
         plt.ylabel("Total gini")
     plt.legend()
-    #plt.savefig("impurity.png")
 
 def decisionLearning(data, impurityMeasure="entropy", tr_val_te_ratios=[0.2, 0.4, 0.4], seed=480):
     np.random.seed(seed)
@@ -173,10 +177,50 @@ def decisionLearning(data, impurityMeasure="entropy", tr_val_te_ratios=[0.2, 0.4
     training = shuffled[:tr]
     validation = shuffled[tr:val]
     test = shuffled[val:]
-    root, trainImps, validImps = decisionTree(training, validation, impurityMeasure)
-    plotImpurityGraph(trainImps, validImps, impurityMeasure)
+    root, trainImps, validImps = treeGrowth(training, validation, impurityMeasure)
+    # Get the max number of splits which gives the minimum validation error
+    split_number = np.where(validImps == min(validImps))[0].max()
+    testImps, accuracy = predictTestData(test, root, split_number, impurityMeasure)
+    plotImpurityGraph(trainImps, validImps, testImps, impurityMeasure)
+    return (root, trainImps, validImps, testImps, accuracy)
+# %%
+def predictTestData(test, root, split_number, impurityMeasure):
+    impMeasure, perfMeasure = getImpurityMeasurementFunctions(impurityMeasure)
+    totalTestRow = len(test)
+    root.testData = test
+    root.testImp = impMeasure(test)
+    nodeQueue = []
+    heappush(nodeQueue, (root.level, root))
+    totalImpurities = [impMeasure(test)]
+    leaves = [] # includes the leaf data of test and dominant class at that leaf (coming from training)
+    while len(nodeQueue) > 0:
+        currentNode = heappop(nodeQueue)[1]
+        if currentNode.level >= split_number:
+            if currentNode.testData is not None:
+                leaves.append( (currentNode.testData, currentNode.dominant_class) )
+            continue
+        currentData = currentNode.testData
+        leftData = currentData[currentData[currentNode.splitFeature] <= currentNode.splitValue]
+        rightData = currentData[currentData[currentNode.splitFeature] > currentNode.splitValue]
+        perf, childImps = perfMeasure(currentNode.testImp, [leftData, rightData])
+        totalImpurities.append(np.round( totalImpurities[currentNode.level] - perf * len(currentNode.testData) / totalTestRow , 5))
+        leftNode = currentNode.leftChild
+        rightNode = currentNode.rightChild
+        leftNode.testData = leftData
+        leftNode.testImp = childImps[0]
+        rightNode.testData = rightData
+        rightNode.testImp = childImps[1]
+        heappush(nodeQueue, (leftNode.level, leftNode) )
+        heappush(nodeQueue, (rightNode.level, rightNode) )
+    true_estimate = 0
+    for l in leaves:
+        # check if leaf data includes the predicted class
+        if np.any(l[0]["target_class"] == l[1]):
+            true_estimate += l[0].groupby(["target_class"]).count().loc[ l[1] ][0]
+    return totalImpurities, (true_estimate, totalTestRow-true_estimate)
+
+
 
 # %%
-decisionLearning(iris, seed=5)
-
-# %%
+results = decisionLearning(iris, seed=7)
+results[-1]
