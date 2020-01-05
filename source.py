@@ -217,7 +217,9 @@ def predictTestData(test, root, split_number, impurityMeasure):
         # check if leaf data includes the predicted class
         if np.any(l[0]["target_class"] == l[1]):
             true_estimate += l[0].groupby(["target_class"]).count().loc[ l[1] ][0]
-    return totalImpurities, (true_estimate, totalTestRow-true_estimate)
+    accuracy = np.array((true_estimate, totalTestRow-true_estimate)).reshape((1,2))
+    accuracy_table = pd.DataFrame(data=accuracy, columns=["True estimate","False estimate"], index=["Count"])
+    return totalImpurities, accuracy_table
 
 
 
